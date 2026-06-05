@@ -1,0 +1,3580 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+<title>APAC Hudl Signal Monthly Usage (May)</title>
+<meta content="keely.mcguigan@hudl.com" name="owner"/>
+<theme base="stone" card-style="filled" color="#F97316" font="Inter" radius="0.5" style="Nova" title-size="sm"><viz>{}</viz></theme>
+<query connection="redshift-consumer.external.hudldata.com" name="actions_monthly" type="raw-sql">
+WITH month_bounds AS (
+  SELECT
+    DATEADD(month, -1, DATE_TRUNC('month', CURRENT_DATE)) AS last_month_start,
+    DATEADD(month, -2, DATE_TRUNC('month', CURRENT_DATE)) AS prior_month_start
+),
+all_requested_orgs AS (
+  SELECT 'Sydney Grammar School' AS requested_org
+  UNION ALL SELECT 'Subiaco'
+  UNION ALL SELECT 'Burleigh Bears'
+  UNION ALL SELECT 'Knox Grammar'
+  UNION ALL SELECT 'Norths Devils'
+  UNION ALL SELECT 'Western Clydesdales'
+  UNION ALL SELECT 'Lacrosse Australia'
+  UNION ALL SELECT 'Sunshine Coast Falcons'
+  UNION ALL SELECT 'Brisbane Grammar School'
+  UNION ALL SELECT 'Canterbury College'
+  UNION ALL SELECT 'Ascham School'
+),
+selected_accounts AS (
+  SELECT requested_org, account_executive_name, customer_success_manager_name
+  FROM (
+    SELECT
+      CASE
+        WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+        WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+        WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+        WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+        WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+        WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+        WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+        WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+        WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+        WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+        WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+      END AS requested_org,
+      account_id,
+      account_executive_name,
+      customer_success_manager_name,
+      active_contract_arr_c,
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE
+          WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+          WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+          WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+          WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+          WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+          WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+          WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+          WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+          WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+          WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+          WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+        END
+        ORDER BY CASE WHEN COALESCE(active_contract_arr_c, 0) &gt; 0 THEN 0 ELSE 1 END,
+                 COALESCE(active_contract_arr_c, 0) DESC,
+                 account_id
+      ) AS rn
+    FROM prod.dn_prod_main.con_salesforce_accounts
+    WHERE test_account_c = 'false'
+      AND COALESCE(org_classification_c, '') &lt;&gt; 'Dummy Organization'
+      AND TRIM(organization_name) IN (
+        'Sydney Grammar School',
+        'Subiaco Football Club',
+        'Burleigh Bears',
+        'Knox Grammar School',
+        'Norths Devils Rugby League Football Club',
+        'Western Clydesdales',
+        'Western Clydesdales RLFC',
+        'Western Clydesdales Rugby League Football Club',
+        'Australian Lacrosse',
+        'Australian Lacrosse Association',
+        'Sunshine Coast Falcons',
+        'Brisbane Grammar School',
+        'Canterbury College',
+        'Ascham School'
+      )
+  ) ranked_accounts
+  WHERE requested_org IS NOT NULL
+    AND rn = 1
+),
+filtered_requested_orgs AS (
+  SELECT requested_org
+  FROM all_requested_orgs
+),
+mapped_actions AS (
+  SELECT
+    CASE
+      WHEN org_name = 'Sydney Grammar School' THEN 'Sydney Grammar School'
+      WHEN org_name = 'Subiaco Football Club' THEN 'Subiaco'
+      WHEN org_name = 'Burleigh Bears' THEN 'Burleigh Bears'
+      WHEN org_name = 'Knox Grammar School' THEN 'Knox Grammar'
+      WHEN org_name = 'Norths Devils Rugby League Football Club' THEN 'Norths Devils'
+      WHEN org_name IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN org_name IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN org_name = 'Sunshine Coast Falcons' THEN 'Sunshine Coast Falcons'
+      WHEN org_name = 'Brisbane Grammar School' THEN 'Brisbane Grammar School'
+      WHEN org_name = 'Canterbury College' THEN 'Canterbury College'
+      WHEN org_name = 'Ascham School' THEN 'Ascham School'
+    END AS requested_org,
+    period_start_date,
+    action_count
+  FROM prod.de_prod_main.con_hudl_signal_org_activity_agg
+  WHERE period_model = 'Calendar'
+    AND period_type = 'Calendar Month'
+    AND period_start_date IN (
+      (SELECT prior_month_start FROM month_bounds),
+      (SELECT last_month_start FROM month_bounds)
+    )
+    AND org_name IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+)
+SELECT
+  ma.requested_org,
+  ma.period_start_date,
+  TO_CHAR(ma.period_start_date, 'Mon YYYY') AS month_label,
+  SUM(ma.action_count) AS total_action_count
+FROM mapped_actions ma
+JOIN filtered_requested_orgs fro
+  ON ma.requested_org = fro.requested_org
+WHERE ma.requested_org IS NOT NULL
+GROUP BY 1,2,3
+ORDER BY ma.period_start_date, ma.requested_org
+  </query>
+<query connection="redshift-consumer.external.hudldata.com" name="active_users_monthly" type="raw-sql">
+WITH month_bounds AS (
+  SELECT
+    DATEADD(month, -1, DATE_TRUNC('month', CURRENT_DATE)) AS last_month_start,
+    DATEADD(month, -2, DATE_TRUNC('month', CURRENT_DATE)) AS prior_month_start
+),
+all_requested_orgs AS (
+  SELECT 'Sydney Grammar School' AS requested_org
+  UNION ALL SELECT 'Subiaco'
+  UNION ALL SELECT 'Burleigh Bears'
+  UNION ALL SELECT 'Knox Grammar'
+  UNION ALL SELECT 'Norths Devils'
+  UNION ALL SELECT 'Western Clydesdales'
+  UNION ALL SELECT 'Lacrosse Australia'
+  UNION ALL SELECT 'Sunshine Coast Falcons'
+  UNION ALL SELECT 'Brisbane Grammar School'
+  UNION ALL SELECT 'Canterbury College'
+  UNION ALL SELECT 'Ascham School'
+),
+selected_accounts AS (
+  SELECT requested_org, account_executive_name, customer_success_manager_name
+  FROM (
+    SELECT
+      CASE
+        WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+        WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+        WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+        WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+        WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+        WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+        WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+        WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+        WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+        WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+        WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+      END AS requested_org,
+      account_id,
+      account_executive_name,
+      customer_success_manager_name,
+      active_contract_arr_c,
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE
+          WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+          WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+          WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+          WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+          WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+          WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+          WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+          WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+          WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+          WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+          WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+        END
+        ORDER BY CASE WHEN COALESCE(active_contract_arr_c, 0) &gt; 0 THEN 0 ELSE 1 END,
+                 COALESCE(active_contract_arr_c, 0) DESC,
+                 account_id
+      ) AS rn
+    FROM prod.dn_prod_main.con_salesforce_accounts
+    WHERE test_account_c = 'false'
+      AND COALESCE(org_classification_c, '') &lt;&gt; 'Dummy Organization'
+      AND TRIM(organization_name) IN (
+        'Sydney Grammar School',
+        'Subiaco Football Club',
+        'Burleigh Bears',
+        'Knox Grammar School',
+        'Norths Devils Rugby League Football Club',
+        'Western Clydesdales',
+        'Western Clydesdales RLFC',
+        'Western Clydesdales Rugby League Football Club',
+        'Australian Lacrosse',
+        'Australian Lacrosse Association',
+        'Sunshine Coast Falcons',
+        'Brisbane Grammar School',
+        'Canterbury College',
+        'Ascham School'
+      )
+  ) ranked_accounts
+  WHERE requested_org IS NOT NULL
+    AND rn = 1
+),
+filtered_requested_orgs AS (
+  SELECT requested_org
+  FROM all_requested_orgs
+),
+mapped_users AS (
+  SELECT
+    CASE
+      WHEN org_name = 'Sydney Grammar School' THEN 'Sydney Grammar School'
+      WHEN org_name = 'Subiaco Football Club' THEN 'Subiaco'
+      WHEN org_name = 'Burleigh Bears' THEN 'Burleigh Bears'
+      WHEN org_name = 'Knox Grammar School' THEN 'Knox Grammar'
+      WHEN org_name = 'Norths Devils Rugby League Football Club' THEN 'Norths Devils'
+      WHEN org_name IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN org_name IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN org_name = 'Sunshine Coast Falcons' THEN 'Sunshine Coast Falcons'
+      WHEN org_name = 'Brisbane Grammar School' THEN 'Brisbane Grammar School'
+      WHEN org_name = 'Canterbury College' THEN 'Canterbury College'
+      WHEN org_name = 'Ascham School' THEN 'Ascham School'
+    END AS requested_org,
+    period_start_date,
+    user_id
+  FROM prod.de_prod_main.con_hudl_signal_user_activity_agg
+  WHERE period_model = 'Calendar'
+    AND period_type = 'Calendar Month'
+    AND period_start_date IN (
+      (SELECT prior_month_start FROM month_bounds),
+      (SELECT last_month_start FROM month_bounds)
+    )
+    AND org_name IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+)
+SELECT
+  mu.requested_org,
+  mu.period_start_date,
+  TO_CHAR(mu.period_start_date, 'Mon YYYY') AS month_label,
+  COUNT(DISTINCT mu.user_id) AS active_users
+FROM mapped_users mu
+JOIN filtered_requested_orgs fro
+  ON mu.requested_org = fro.requested_org
+WHERE mu.requested_org IS NOT NULL
+GROUP BY 1,2,3
+ORDER BY mu.period_start_date, mu.requested_org
+  </query>
+<query connection="redshift-consumer.external.hudldata.com" name="active_teams_monthly" type="raw-sql">
+WITH month_bounds AS (
+  SELECT
+    DATEADD(month, -1, DATE_TRUNC('month', CURRENT_DATE)) AS last_month_start,
+    DATEADD(month, -2, DATE_TRUNC('month', CURRENT_DATE)) AS prior_month_start
+),
+all_requested_orgs AS (
+  SELECT 'Sydney Grammar School' AS requested_org
+  UNION ALL SELECT 'Subiaco'
+  UNION ALL SELECT 'Burleigh Bears'
+  UNION ALL SELECT 'Knox Grammar'
+  UNION ALL SELECT 'Norths Devils'
+  UNION ALL SELECT 'Western Clydesdales'
+  UNION ALL SELECT 'Lacrosse Australia'
+  UNION ALL SELECT 'Sunshine Coast Falcons'
+  UNION ALL SELECT 'Brisbane Grammar School'
+  UNION ALL SELECT 'Canterbury College'
+  UNION ALL SELECT 'Ascham School'
+),
+selected_accounts AS (
+  SELECT requested_org, account_executive_name, customer_success_manager_name
+  FROM (
+    SELECT
+      CASE
+        WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+        WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+        WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+        WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+        WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+        WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+        WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+        WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+        WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+        WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+        WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+      END AS requested_org,
+      account_id,
+      account_executive_name,
+      customer_success_manager_name,
+      active_contract_arr_c,
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE
+          WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+          WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+          WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+          WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+          WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+          WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+          WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+          WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+          WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+          WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+          WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+        END
+        ORDER BY CASE WHEN COALESCE(active_contract_arr_c, 0) &gt; 0 THEN 0 ELSE 1 END,
+                 COALESCE(active_contract_arr_c, 0) DESC,
+                 account_id
+      ) AS rn
+    FROM prod.dn_prod_main.con_salesforce_accounts
+    WHERE test_account_c = 'false'
+      AND COALESCE(org_classification_c, '') &lt;&gt; 'Dummy Organization'
+      AND TRIM(organization_name) IN (
+        'Sydney Grammar School',
+        'Subiaco Football Club',
+        'Burleigh Bears',
+        'Knox Grammar School',
+        'Norths Devils Rugby League Football Club',
+        'Western Clydesdales',
+        'Western Clydesdales RLFC',
+        'Western Clydesdales Rugby League Football Club',
+        'Australian Lacrosse',
+        'Australian Lacrosse Association',
+        'Sunshine Coast Falcons',
+        'Brisbane Grammar School',
+        'Canterbury College',
+        'Ascham School'
+      )
+  ) ranked_accounts
+  WHERE requested_org IS NOT NULL
+    AND rn = 1
+),
+filtered_requested_orgs AS (
+  SELECT requested_org
+  FROM all_requested_orgs
+),
+mapped_teams AS (
+  SELECT
+    CASE
+      WHEN org_name = 'Sydney Grammar School' THEN 'Sydney Grammar School'
+      WHEN org_name = 'Subiaco Football Club' THEN 'Subiaco'
+      WHEN org_name = 'Burleigh Bears' THEN 'Burleigh Bears'
+      WHEN org_name = 'Knox Grammar School' THEN 'Knox Grammar'
+      WHEN org_name = 'Norths Devils Rugby League Football Club' THEN 'Norths Devils'
+      WHEN org_name IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN org_name IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN org_name = 'Sunshine Coast Falcons' THEN 'Sunshine Coast Falcons'
+      WHEN org_name = 'Brisbane Grammar School' THEN 'Brisbane Grammar School'
+      WHEN org_name = 'Canterbury College' THEN 'Canterbury College'
+      WHEN org_name = 'Ascham School' THEN 'Ascham School'
+    END AS requested_org,
+    period_start_date,
+    team_id
+  FROM prod.de_prod_main.con_hudl_signal_team_activity_agg
+  WHERE period_model = 'Calendar'
+    AND period_type = 'Calendar Month'
+    AND period_start_date IN (
+      (SELECT prior_month_start FROM month_bounds),
+      (SELECT last_month_start FROM month_bounds)
+    )
+    AND org_name IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+)
+SELECT
+  mt.requested_org,
+  mt.period_start_date,
+  TO_CHAR(mt.period_start_date, 'Mon YYYY') AS month_label,
+  COUNT(DISTINCT mt.team_id) AS active_teams
+FROM mapped_teams mt
+JOIN filtered_requested_orgs fro
+  ON mt.requested_org = fro.requested_org
+WHERE mt.requested_org IS NOT NULL
+GROUP BY 1,2,3
+ORDER BY mt.period_start_date, mt.requested_org
+  </query>
+<query connection="redshift-consumer.external.hudldata.com" name="trend_last3mo" type="raw-sql">
+WITH month_bounds AS (
+  SELECT DATEADD(month, -3, DATE_TRUNC('month', CURRENT_DATE)) AS start_month
+),
+all_requested_orgs AS (
+  SELECT 'Sydney Grammar School' AS requested_org
+  UNION ALL SELECT 'Subiaco'
+  UNION ALL SELECT 'Burleigh Bears'
+  UNION ALL SELECT 'Knox Grammar'
+  UNION ALL SELECT 'Norths Devils'
+  UNION ALL SELECT 'Western Clydesdales'
+  UNION ALL SELECT 'Lacrosse Australia'
+  UNION ALL SELECT 'Sunshine Coast Falcons'
+  UNION ALL SELECT 'Brisbane Grammar School'
+  UNION ALL SELECT 'Canterbury College'
+  UNION ALL SELECT 'Ascham School'
+),
+selected_accounts AS (
+  SELECT requested_org, account_executive_name, customer_success_manager_name
+  FROM (
+    SELECT
+      CASE
+        WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+        WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+        WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+        WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+        WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+        WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+        WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+        WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+        WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+        WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+        WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+      END AS requested_org,
+      account_id,
+      account_executive_name,
+      customer_success_manager_name,
+      active_contract_arr_c,
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE
+          WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+          WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+          WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+          WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+          WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+          WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+          WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+          WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+          WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+          WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+          WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+        END
+        ORDER BY CASE WHEN COALESCE(active_contract_arr_c, 0) &gt; 0 THEN 0 ELSE 1 END,
+                 COALESCE(active_contract_arr_c, 0) DESC,
+                 account_id
+      ) AS rn
+    FROM prod.dn_prod_main.con_salesforce_accounts
+    WHERE test_account_c = 'false'
+      AND COALESCE(org_classification_c, '') &lt;&gt; 'Dummy Organization'
+      AND TRIM(organization_name) IN (
+        'Sydney Grammar School',
+        'Subiaco Football Club',
+        'Burleigh Bears',
+        'Knox Grammar School',
+        'Norths Devils Rugby League Football Club',
+        'Western Clydesdales',
+        'Western Clydesdales RLFC',
+        'Western Clydesdales Rugby League Football Club',
+        'Australian Lacrosse',
+        'Australian Lacrosse Association',
+        'Sunshine Coast Falcons',
+        'Brisbane Grammar School',
+        'Canterbury College',
+        'Ascham School'
+      )
+  ) ranked_accounts
+  WHERE requested_org IS NOT NULL
+    AND rn = 1
+),
+filtered_requested_orgs AS (
+  SELECT requested_org
+  FROM all_requested_orgs
+),
+mapped_actions AS (
+  SELECT
+    CASE
+      WHEN org_name = 'Sydney Grammar School' THEN 'Sydney Grammar School'
+      WHEN org_name = 'Subiaco Football Club' THEN 'Subiaco'
+      WHEN org_name = 'Burleigh Bears' THEN 'Burleigh Bears'
+      WHEN org_name = 'Knox Grammar School' THEN 'Knox Grammar'
+      WHEN org_name = 'Norths Devils Rugby League Football Club' THEN 'Norths Devils'
+      WHEN org_name IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN org_name IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN org_name = 'Sunshine Coast Falcons' THEN 'Sunshine Coast Falcons'
+      WHEN org_name = 'Brisbane Grammar School' THEN 'Brisbane Grammar School'
+      WHEN org_name = 'Canterbury College' THEN 'Canterbury College'
+      WHEN org_name = 'Ascham School' THEN 'Ascham School'
+    END AS requested_org,
+    period_start_date,
+    action_count
+  FROM prod.de_prod_main.con_hudl_signal_org_activity_agg
+  WHERE period_model = 'Calendar'
+    AND period_type = 'Calendar Month'
+    AND period_start_date &gt;= (SELECT start_month FROM month_bounds)
+    AND period_start_date &lt; DATE_TRUNC('month', CURRENT_DATE)
+    AND org_name IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+)
+SELECT
+  ma.requested_org,
+  ma.period_start_date,
+  TO_CHAR(ma.period_start_date, 'Mon YYYY') AS month_label,
+  SUM(ma.action_count) AS total_action_count
+FROM mapped_actions ma
+JOIN filtered_requested_orgs fro
+  ON ma.requested_org = fro.requested_org
+WHERE ma.requested_org IS NOT NULL
+GROUP BY 1,2,3
+ORDER BY ma.period_start_date, ma.requested_org
+  </query>
+<query connection="redshift-consumer.external.hudldata.com" name="action_breakdown_monthly" type="raw-sql">
+WITH month_bounds AS (
+  SELECT
+    DATEADD(month, -1, DATE_TRUNC('month', CURRENT_DATE)) AS last_month_start,
+    DATEADD(month, -2, DATE_TRUNC('month', CURRENT_DATE)) AS prior_month_start
+),
+all_requested_orgs AS (
+  SELECT 'Sydney Grammar School' AS requested_org
+  UNION ALL SELECT 'Subiaco'
+  UNION ALL SELECT 'Burleigh Bears'
+  UNION ALL SELECT 'Knox Grammar'
+  UNION ALL SELECT 'Norths Devils'
+  UNION ALL SELECT 'Western Clydesdales'
+  UNION ALL SELECT 'Lacrosse Australia'
+  UNION ALL SELECT 'Sunshine Coast Falcons'
+  UNION ALL SELECT 'Brisbane Grammar School'
+  UNION ALL SELECT 'Canterbury College'
+  UNION ALL SELECT 'Ascham School'
+),
+selected_accounts AS (
+  SELECT requested_org, account_executive_name, customer_success_manager_name
+  FROM (
+    SELECT
+      CASE
+        WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+        WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+        WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+        WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+        WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+        WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+        WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+        WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+        WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+        WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+        WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+      END AS requested_org,
+      account_id,
+      account_executive_name,
+      customer_success_manager_name,
+      active_contract_arr_c,
+      ROW_NUMBER() OVER (
+        PARTITION BY CASE
+          WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+          WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+          WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+          WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+          WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+          WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+          WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+          WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+          WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+          WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+          WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+        END
+        ORDER BY CASE WHEN COALESCE(active_contract_arr_c, 0) &gt; 0 THEN 0 ELSE 1 END,
+                 COALESCE(active_contract_arr_c, 0) DESC,
+                 account_id
+      ) AS rn
+    FROM prod.dn_prod_main.con_salesforce_accounts
+    WHERE test_account_c = 'false'
+      AND COALESCE(org_classification_c, '') &lt;&gt; 'Dummy Organization'
+      AND TRIM(organization_name) IN (
+        'Sydney Grammar School',
+        'Subiaco Football Club',
+        'Burleigh Bears',
+        'Knox Grammar School',
+        'Norths Devils Rugby League Football Club',
+        'Western Clydesdales',
+        'Western Clydesdales RLFC',
+        'Western Clydesdales Rugby League Football Club',
+        'Australian Lacrosse',
+        'Australian Lacrosse Association',
+        'Sunshine Coast Falcons',
+        'Brisbane Grammar School',
+        'Canterbury College',
+        'Ascham School'
+      )
+  ) ranked_accounts
+  WHERE requested_org IS NOT NULL
+    AND rn = 1
+),
+filtered_requested_orgs AS (
+  SELECT requested_org
+  FROM all_requested_orgs
+),
+mapped_actions AS (
+  SELECT
+    CASE
+      WHEN org_name = 'Sydney Grammar School' THEN 'Sydney Grammar School'
+      WHEN org_name = 'Subiaco Football Club' THEN 'Subiaco'
+      WHEN org_name = 'Burleigh Bears' THEN 'Burleigh Bears'
+      WHEN org_name = 'Knox Grammar School' THEN 'Knox Grammar'
+      WHEN org_name = 'Norths Devils Rugby League Football Club' THEN 'Norths Devils'
+      WHEN org_name IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN org_name IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN org_name = 'Sunshine Coast Falcons' THEN 'Sunshine Coast Falcons'
+      WHEN org_name = 'Brisbane Grammar School' THEN 'Brisbane Grammar School'
+      WHEN org_name = 'Canterbury College' THEN 'Canterbury College'
+      WHEN org_name = 'Ascham School' THEN 'Ascham School'
+    END AS requested_org,
+    period_start_date,
+    action_name,
+    action_count
+  FROM prod.de_prod_main.con_hudl_signal_org_activity_agg
+  WHERE period_model = 'Calendar'
+    AND period_type = 'Calendar Month'
+    AND period_start_date IN (
+      (SELECT prior_month_start FROM month_bounds),
+      (SELECT last_month_start FROM month_bounds)
+    )
+    AND org_name IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+)
+SELECT
+  ma.requested_org,
+  ma.period_start_date,
+  TO_CHAR(ma.period_start_date, 'Mon YYYY') AS month_label,
+  ma.action_name,
+  SUM(ma.action_count) AS action_count
+FROM mapped_actions ma
+JOIN filtered_requested_orgs fro
+  ON ma.requested_org = fro.requested_org
+WHERE ma.requested_org IS NOT NULL
+GROUP BY 1,2,3,4
+ORDER BY ma.requested_org, ma.period_start_date, action_count DESC, ma.action_name
+  </query>
+<query inputs="actions_monthly,active_users_monthly,active_teams_monthly" name="comparison_report" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+actions = load_df("actions_monthly")
+users = load_df("active_users_monthly")
+teams = load_df("active_teams_monthly")
+
+for df, value_col in [
+    (actions, "total_action_count"),
+    (users, "active_users"),
+    (teams, "active_teams"),
+]:
+    df["period_start_date"] = pd.to_datetime(df["period_start_date"])
+
+periods = sorted(actions["period_start_date"].dropna().unique())
+prior_month = periods[0]
+last_month = periods[-1]
+
+aw = actions.pivot_table(index="requested_org", columns="period_start_date", values="total_action_count", aggfunc="sum", fill_value=0).reset_index()
+uw = users.pivot_table(index="requested_org", columns="period_start_date", values="active_users", aggfunc="sum", fill_value=0).reset_index()
+tw = teams.pivot_table(index="requested_org", columns="period_start_date", values="active_teams", aggfunc="sum", fill_value=0).reset_index()
+
+aw = aw.rename(columns={prior_month: "prior_month_actions", last_month: "last_month_actions"})
+uw = uw.rename(columns={prior_month: "prior_month_active_users", last_month: "last_month_active_users"})
+tw = tw.rename(columns={prior_month: "prior_month_active_teams", last_month: "last_month_active_teams"})
+
+out = aw.merge(uw, on="requested_org", how="outer").merge(tw, on="requested_org", how="outer").fillna(0)
+
+for col in [
+    "prior_month_actions", "last_month_actions",
+    "prior_month_active_users", "last_month_active_users",
+    "prior_month_active_teams", "last_month_active_teams",
+]:
+    out[col] = out[col].astype(int)
+
+out["actions_change"] = out["last_month_actions"] - out["prior_month_actions"]
+out["actions_change_pct"] = ((out["last_month_actions"] - out["prior_month_actions"]) / out["prior_month_actions"].replace({0: pd.NA})) * 100
+out["active_users_change"] = out["last_month_active_users"] - out["prior_month_active_users"]
+out["active_teams_change"] = out["last_month_active_teams"] - out["prior_month_active_teams"]
+out = out.sort_values(["last_month_actions", "requested_org"], ascending=[False, True]).reset_index(drop=True)
+
+save_df(out, "comparison_report")
+  </query>
+<query inputs="actions_monthly,comparison_report" name="summary_kpis" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+actions = load_df("actions_monthly")
+report = load_df("comparison_report")
+actions["period_start_date"] = pd.to_datetime(actions["period_start_date"])
+period_map = actions[["period_start_date", "month_label"]].drop_duplicates().sort_values("period_start_date")
+prior_label = period_map.iloc[0]["month_label"]
+last_label = period_map.iloc[-1]["month_label"]
+
+out = pd.DataFrame([{
+    "prior_month_label": prior_label,
+    "last_month_label": last_label,
+    "last_month_total_actions": int(report["last_month_actions"].sum()),
+    "prior_month_total_actions": int(report["prior_month_actions"].sum()),
+    "actions_change": int(report["last_month_actions"].sum() - report["prior_month_actions"].sum()),
+    "actions_change_pct": ((report["last_month_actions"].sum() - report["prior_month_actions"].sum()) / report["prior_month_actions"].sum() * 100) if report["prior_month_actions"].sum() else None,
+    "last_month_total_active_users": int(report["last_month_active_users"].sum()),
+    "last_month_total_active_teams": int(report["last_month_active_teams"].sum()),
+    "orgs_up": int((report["actions_change"] &gt; 0).sum())
+}])
+
+save_df(out, "summary_kpis")
+  </query>
+<query inputs="comparison_report,summary_kpis" name="comparison_report_pretty" type="python">
+from dot import load_df, save_df
+
+report = load_df("comparison_report").copy()
+labels = load_df("summary_kpis")
+
+last_label = labels.iloc[0]["last_month_label"]
+prior_label = labels.iloc[0]["prior_month_label"]
+
+report = report.fillna(0)
+report["actions_change_pct"] = report["actions_change_pct"].round(1)
+report["trend"] = report["actions_change"].apply(lambda x: "Up" if x &gt; 0 else ("Down" if x &lt; 0 else "Flat"))
+
+out = report.rename(columns={
+    "requested_org": "Organisation",
+    "trend": "Trend",
+    "last_month_actions": f"Actions ({last_label})",
+    "prior_month_actions": f"Actions ({prior_label})",
+    "actions_change": "Action change",
+    "actions_change_pct": "Action change %",
+    "last_month_active_users": f"Active users ({last_label})",
+    "active_users_change": "Active users change",
+    "last_month_active_teams": f"Active teams ({last_label})",
+    "active_teams_change": "Active teams change",
+})
+
+out = out[[
+    "Organisation",
+    "Trend",
+    f"Actions ({last_label})",
+    f"Actions ({prior_label})",
+    "Action change",
+    "Action change %",
+    f"Active users ({last_label})",
+    "Active users change",
+    f"Active teams ({last_label})",
+    "Active teams change",
+]].sort_values([f"Actions ({last_label})", "Organisation"], ascending=[False, True]).reset_index(drop=True)
+
+save_df(out, "comparison_report_pretty")
+  </query>
+<query connection="redshift-consumer.external.hudldata.com" name="workflow_metrics_monthly" type="raw-sql">
+WITH month_bounds AS (
+  SELECT
+    DATEADD(month, -1, DATE_TRUNC('month', CURRENT_DATE)) AS last_month_start,
+    DATEADD(month, -2, DATE_TRUNC('month', CURRENT_DATE)) AS prior_month_start
+),
+months AS (
+  SELECT prior_month_start AS period_start_date FROM month_bounds
+  UNION ALL
+  SELECT last_month_start AS period_start_date FROM month_bounds
+),
+all_requested_orgs AS (
+  SELECT 'Sydney Grammar School' AS requested_org
+  UNION ALL SELECT 'Subiaco'
+  UNION ALL SELECT 'Burleigh Bears'
+  UNION ALL SELECT 'Knox Grammar'
+  UNION ALL SELECT 'Norths Devils'
+  UNION ALL SELECT 'Western Clydesdales'
+  UNION ALL SELECT 'Lacrosse Australia'
+  UNION ALL SELECT 'Sunshine Coast Falcons'
+  UNION ALL SELECT 'Brisbane Grammar School'
+  UNION ALL SELECT 'Canterbury College'
+  UNION ALL SELECT 'Ascham School'
+),
+metric_names AS (
+  SELECT 'Uploaded sessions' AS metric_name
+  UNION ALL SELECT 'Curated sessions'
+  UNION ALL SELECT 'Dashboards created'
+),
+activity AS (
+  SELECT
+    CASE
+      WHEN org_name = 'Sydney Grammar School' THEN 'Sydney Grammar School'
+      WHEN org_name = 'Subiaco Football Club' THEN 'Subiaco'
+      WHEN org_name = 'Burleigh Bears' THEN 'Burleigh Bears'
+      WHEN org_name = 'Knox Grammar School' THEN 'Knox Grammar'
+      WHEN org_name = 'Norths Devils Rugby League Football Club' THEN 'Norths Devils'
+      WHEN org_name IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN org_name IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN org_name = 'Sunshine Coast Falcons' THEN 'Sunshine Coast Falcons'
+      WHEN org_name = 'Brisbane Grammar School' THEN 'Brisbane Grammar School'
+      WHEN org_name = 'Canterbury College' THEN 'Canterbury College'
+      WHEN org_name = 'Ascham School' THEN 'Ascham School'
+    END AS requested_org,
+    period_start_date,
+    CASE
+      WHEN action_name ILIKE 'Create Signal Session%' THEN 'Uploaded sessions'
+      WHEN action_name = 'Create Dashboard' THEN 'Dashboards created'
+      WHEN action_name IN (
+        'Create Signal Phase',
+        'Create Signal Phase Split',
+        'Edit Signal Phase',
+        'Duplicate Signal Phase',
+        'Delete Signal Phase',
+        'Edit Signal Metrics Settings',
+        'Create Signal Group',
+        'Edit Signal Group',
+        'Delete Signal Group',
+        'Create Signal Substitution'
+      ) THEN 'Curated sessions'
+    END AS metric_name,
+    SUM(action_count) AS metric_value
+  FROM prod.de_prod_main.con_hudl_signal_org_activity_agg
+  WHERE period_model = 'Calendar'
+    AND period_type = 'Calendar Month'
+    AND period_start_date IN (
+      (SELECT prior_month_start FROM month_bounds),
+      (SELECT last_month_start FROM month_bounds)
+    )
+    AND org_name IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+  GROUP BY 1,2,3
+)
+SELECT
+  aro.requested_org,
+  m.period_start_date,
+  TO_CHAR(m.period_start_date, 'Mon YYYY') AS month_label,
+  mn.metric_name,
+  COALESCE(a.metric_value, 0) AS metric_value
+FROM all_requested_orgs aro
+CROSS JOIN months m
+CROSS JOIN metric_names mn
+LEFT JOIN activity a
+  ON aro.requested_org = a.requested_org
+ AND m.period_start_date = a.period_start_date
+ AND mn.metric_name = a.metric_name
+ORDER BY aro.requested_org, m.period_start_date, mn.metric_name
+</query>
+<query inputs="workflow_metrics_monthly" name="workflow_totals" type="python">
+from dot import load_df, save_df
+
+workflow = load_df("workflow_metrics_monthly").copy()
+out = workflow.groupby(["period_start_date", "month_label", "metric_name"], as_index=False)["metric_value"].sum()
+save_df(out, "workflow_totals")
+</query>
+<query inputs="workflow_metrics_monthly" name="workflow_last_month_by_org" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+workflow = load_df("workflow_metrics_monthly").copy()
+workflow["period_start_date"] = pd.to_datetime(workflow["period_start_date"])
+last_month = workflow["period_start_date"].max()
+out = workflow[workflow["period_start_date"] == last_month].copy()
+save_df(out, "workflow_last_month_by_org")
+</query>
+<query inputs="comparison_report,summary_kpis,workflow_metrics_monthly" name="club_insights_all" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy()
+labels = load_df("summary_kpis")
+workflow = load_df("workflow_metrics_monthly").copy()
+
+orgs = [
+    "Sydney Grammar School",
+    "Subiaco",
+    "Burleigh Bears",
+    "Knox Grammar",
+    "Norths Devils",
+    "Western Clydesdales",
+    "Lacrosse Australia",
+    "Sunshine Coast Falcons",
+    "Brisbane Grammar School",
+    "Canterbury College",
+    "Ascham School",
+]
+
+report = report.fillna(0)
+workflow["period_start_date"] = pd.to_datetime(workflow["period_start_date"])
+periods = sorted(workflow["period_start_date"].dropna().unique())
+prior_month = periods[0]
+last_month = periods[-1]
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+
+metric_pivot = workflow.pivot_table(
+    index="requested_org",
+    columns=["period_start_date", "metric_name"],
+    values="metric_value",
+    aggfunc="sum",
+    fill_value=0,
+)
+
+rows = []
+for org in orgs:
+    rep = report[report["requested_org"] == org]
+    if rep.empty:
+        last_actions = prior_actions = 0
+        last_users = last_teams = 0
+    else:
+        r = rep.iloc[0]
+        last_actions = int(r.get("last_month_actions", 0) or 0)
+        prior_actions = int(r.get("prior_month_actions", 0) or 0)
+        last_users = int(r.get("last_month_active_users", 0) or 0)
+        last_teams = int(r.get("last_month_active_teams", 0) or 0)
+
+    def metric_value(period, metric_name):
+        try:
+            value = metric_pivot.loc[org, (period, metric_name)]
+            if hasattr(value, "iloc"):
+                value = value.iloc[0]
+            return int(value)
+        except Exception:
+            return 0
+
+    prior_uploads = metric_value(prior_month, "Uploaded sessions")
+    last_uploads = metric_value(last_month, "Uploaded sessions")
+    prior_curated = metric_value(prior_month, "Curated sessions")
+    last_curated = metric_value(last_month, "Curated sessions")
+    prior_dashboards = metric_value(prior_month, "Dashboards created")
+    last_dashboards = metric_value(last_month, "Dashboards created")
+
+    if last_uploads &gt; 0 and last_curated &gt; 0 and last_dashboards &gt; 0:
+        club_insight = (
+            f"{last_label} shows the full workflow: {last_uploads:,} uploaded sessions, "
+            f"{last_curated:,} curated-session touches, and {last_dashboards:,} dashboards created."
+        )
+    elif last_uploads &gt; 0 and last_curated &gt; 0 and last_dashboards == 0:
+        club_insight = (
+            f"{last_uploads:,} uploaded sessions and {last_curated:,} curated-session touches were tracked in {last_label}, "
+            f"but no dashboards were created. The club is doing prep work without turning it into saved analysis."
+        )
+    elif last_uploads &gt; 0 and last_curated == 0:
+        club_insight = (
+            f"{last_uploads:,} uploaded sessions landed in {last_label}, but there were no tracked curated-session touches. "
+            f"The workflow appears to stop right after upload."
+        )
+    elif last_uploads == 0 and last_curated &gt; 0 and last_dashboards &gt; 0:
+        club_insight = (
+            f"No fresh uploaded sessions were tracked in {last_label}, but the club still logged {last_curated:,} curated-session touches "
+            f"and {last_dashboards:,} dashboards created. They look to be working from existing prepared data."
+        )
+    elif last_uploads == 0 and last_curated &gt; 0:
+        club_insight = (
+            f"No fresh uploaded sessions were tracked in {last_label}, but {last_curated:,} curated-session touches were. "
+            f"This looks like rework on older sessions rather than new data landing."
+        )
+    elif last_dashboards &gt; 0:
+        club_insight = (
+            f"{last_dashboards:,} dashboards were created in {last_label} without matching upload or curation signals. "
+            f"The club is analyzing existing setups more than creating fresh workflow volume."
+        )
+    elif last_actions &gt; 0:
+        club_insight = (
+            f"{last_actions:,} total actions were tracked in {last_label}, but none of the three milestone metrics fired. "
+            f"Most activity is happening in other Signal workflows."
+        )
+    else:
+        club_insight = f"No uploaded sessions, curated-session touches, or dashboards created were tracked in {last_label}."
+
+    if last_uploads &gt; prior_uploads and last_curated &gt;= prior_curated:
+        club_insight += f" Upload and curation both improved vs {prior_label}."
+    elif last_uploads &gt; prior_uploads and last_curated &lt; prior_curated:
+        club_insight += f" Uploads improved vs {prior_label}, but curation did not keep pace."
+    elif last_dashboards &gt; prior_dashboards:
+        club_insight += f" Dashboard creation also improved vs {prior_label}."
+    elif last_actions &lt; prior_actions:
+        club_insight += f" Overall usage eased vs {prior_label}."
+    elif last_actions &gt; prior_actions:
+        club_insight += f" Overall usage improved vs {prior_label}."
+
+    if last_uploads &gt; 0 and last_curated &gt; 0 and last_dashboards == 0:
+        next_step = "Push on dashboard setup or reuse. The prep work is already there."
+    elif last_uploads &gt; 0 and last_curated == 0:
+        next_step = "Focus on the curation step after upload."
+    elif last_uploads == 0 and last_curated &gt; 0 and last_dashboards &gt; 0:
+        next_step = "Ask whether the club is intentionally working off older sessions or missing fresh uploads."
+    elif last_dashboards &gt; 0 and last_actions &gt;= prior_actions:
+        next_step = "Lean into the analysis workflow that is already sticking."
+    elif last_actions == 0:
+        next_step = "Treat this as low engagement and validate whether the club is active in Signal right now."
+    elif last_actions &lt; prior_actions:
+        next_step = "Check whether a schedule gap or workflow change explains the softer month."
+    else:
+        next_step = "Keep reinforcing the workflow step that is already showing momentum."
+
+    rows.append({
+        "requested_org": org,
+        "club_insight": club_insight,
+        "next_step": next_step,
+        "last_uploaded_sessions": last_uploads,
+        "prior_uploaded_sessions": prior_uploads,
+        "last_curated_sessions": last_curated,
+        "prior_curated_sessions": prior_curated,
+        "last_dashboards_created": last_dashboards,
+        "prior_dashboards_created": prior_dashboards,
+        "last_month_actions": last_actions,
+        "last_month_active_users": last_users,
+        "last_month_active_teams": last_teams,
+    })
+
+save_df(pd.DataFrame(rows), "club_insights_all")
+</query>
+<query inputs="club_insights_all" name="org_sydney_grammar_school_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Sydney Grammar School"].copy()
+save_df(out, "org_sydney_grammar_school_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_subiaco_football_club_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Subiaco"].copy()
+save_df(out, "org_subiaco_football_club_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_burleigh_bears_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Burleigh Bears"].copy()
+save_df(out, "org_burleigh_bears_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_knox_grammar_school_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Knox Grammar"].copy()
+save_df(out, "org_knox_grammar_school_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_norths_devils_rlfc_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Norths Devils"].copy()
+save_df(out, "org_norths_devils_rlfc_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_western_clydesdales_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Western Clydesdales"].copy()
+save_df(out, "org_western_clydesdales_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_australian_lacrosse_association_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Lacrosse Australia"].copy()
+save_df(out, "org_australian_lacrosse_association_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_sunshine_coast_falcons_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Sunshine Coast Falcons"].copy()
+save_df(out, "org_sunshine_coast_falcons_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_brisbane_grammar_school_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Brisbane Grammar School"].copy()
+save_df(out, "org_brisbane_grammar_school_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_canterbury_college_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Canterbury College"].copy()
+save_df(out, "org_canterbury_college_club_insight")
+</query>
+<query inputs="club_insights_all" name="org_ascham_school_club_insight" type="python">
+from dot import load_df, save_df
+
+out = load_df("club_insights_all")
+out = out[out["requested_org"] == "Ascham School"].copy()
+save_df(out, "org_ascham_school_club_insight")
+</query>
+<!-- org insight queries start -->
+<query connection="redshift-consumer.external.hudldata.com" name="sales_org_context" type="raw-sql">
+WITH mapped_accounts AS (
+  SELECT
+    CASE
+      WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+      WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+      WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+      WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+      WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+      WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+      WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+      WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+      WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+    END AS requested_org,
+    account_id,
+    organization_name,
+    business_unit_c,
+    market_type_c,
+    org_classification_c,
+    account_executive_name,
+    customer_success_manager_name,
+    COALESCE(territory_name, sales_territory_c) AS sales_owner_area,
+    active_contract_arr_c,
+    ROW_NUMBER() OVER (
+      PARTITION BY CASE
+        WHEN TRIM(organization_name) IN ('Sydney Grammar School') THEN 'Sydney Grammar School'
+        WHEN TRIM(organization_name) IN ('Subiaco Football Club') THEN 'Subiaco'
+        WHEN TRIM(organization_name) IN ('Burleigh Bears') THEN 'Burleigh Bears'
+        WHEN TRIM(organization_name) IN ('Knox Grammar School') THEN 'Knox Grammar'
+        WHEN TRIM(organization_name) IN ('Norths Devils Rugby League Football Club') THEN 'Norths Devils'
+        WHEN TRIM(organization_name) IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+        WHEN TRIM(organization_name) IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+        WHEN TRIM(organization_name) IN ('Sunshine Coast Falcons') THEN 'Sunshine Coast Falcons'
+        WHEN TRIM(organization_name) IN ('Brisbane Grammar School') THEN 'Brisbane Grammar School'
+        WHEN TRIM(organization_name) IN ('Canterbury College') THEN 'Canterbury College'
+        WHEN TRIM(organization_name) IN ('Ascham School') THEN 'Ascham School'
+      END
+      ORDER BY
+        CASE WHEN COALESCE(active_contract_arr_c, 0) &gt; 0 THEN 0 ELSE 1 END,
+        COALESCE(active_contract_arr_c, 0) DESC,
+        account_id
+    ) AS rn
+  FROM prod.dn_prod_main.con_salesforce_accounts
+  WHERE test_account_c = 'false'
+    AND COALESCE(org_classification_c, '') &lt;&gt; 'Dummy Organization'
+    AND TRIM(organization_name) IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+),
+selected_accounts AS (
+  SELECT
+    requested_org,
+    account_id,
+    organization_name AS sf_org_name,
+    business_unit_c AS sf_business_unit,
+    market_type_c AS sf_market_type,
+    org_classification_c AS sf_org_classification,
+    account_executive_name,
+    customer_success_manager_name,
+    sales_owner_area
+  FROM mapped_accounts
+  WHERE requested_org IS NOT NULL
+    AND rn = 1
+),
+filtered_accounts AS (
+  SELECT *
+  FROM selected_accounts
+  WHERE 1 = 1
+),
+product_family_counts AS (
+  SELECT
+    sa.requested_org,
+    s.product_family,
+    COUNT(DISTINCT s.subscription_id) AS subscription_count
+  FROM filtered_accounts sa
+  JOIN prod.de_prod_main.con_subscriptions_per_contract s
+    ON sa.account_id = s.account_id
+  WHERE s.is_active_subscription = TRUE
+    AND s.product_family IS NOT NULL
+  GROUP BY 1,2
+),
+product_family_ranked AS (
+  SELECT
+    requested_org,
+    product_family,
+    subscription_count,
+    ROW_NUMBER() OVER (
+      PARTITION BY requested_org
+      ORDER BY subscription_count DESC, product_family
+    ) AS rn
+  FROM product_family_counts
+),
+products_agg AS (
+  SELECT
+    requested_org,
+    LISTAGG(product_family, ', ') WITHIN GROUP (ORDER BY product_family) AS active_product_families
+  FROM product_family_ranked
+  WHERE rn &lt;= 3
+  GROUP BY 1
+),
+open_opps_ranked AS (
+  SELECT
+    sa.requested_org,
+    o.opportunity_id,
+    o.opportunity_stage_name,
+    o.opportunity_close_date,
+    ROW_NUMBER() OVER (
+      PARTITION BY sa.requested_org
+      ORDER BY o.opportunity_close_date NULLS LAST, o.opportunity_id
+    ) AS rn
+  FROM filtered_accounts sa
+  JOIN prod.de_prod_main.con_salesforce_opportunities_business_lens o
+    ON sa.account_id = o.opportunity_account_id
+  WHERE o.opportunity_status = 'Open'
+),
+open_opps_agg AS (
+  SELECT
+    requested_org,
+    COUNT(DISTINCT opportunity_id) AS open_opp_count,
+    MIN(opportunity_close_date) AS next_open_opp_close_date
+  FROM open_opps_ranked
+  GROUP BY 1
+),
+open_opp_stages AS (
+  SELECT
+    requested_org,
+    LISTAGG(COALESCE(opportunity_stage_name, 'Unspecified'), ', ') WITHIN GROUP (ORDER BY rn) AS open_opp_stages
+  FROM open_opps_ranked
+  WHERE rn &lt;= 2
+  GROUP BY 1
+),
+cases_filtered AS (
+  SELECT
+    sa.requested_org,
+    c.case_id,
+    c.created_date,
+    c.is_closed,
+    c.category_c,
+    c.issue_c
+  FROM filtered_accounts sa
+  JOIN prod.dn_prod_main.con_salesforce_cases c
+    ON sa.account_id = c.account_id
+  WHERE c.record_type_id IN ('0120V000001Yd0lQAC', '012VY000000TT0DYAW')
+    AND c.is_deleted = FALSE
+    AND COALESCE(c.spam_c, FALSE) = FALSE
+    AND COALESCE(c.origin, '') &lt;&gt; 'Proactive'
+    AND c.created_date &gt;= DATEADD(day, -120, CURRENT_DATE)
+),
+case_agg AS (
+  SELECT
+    requested_org,
+    COUNT(DISTINCT case_id) AS recent_case_count,
+    COUNT(DISTINCT CASE WHEN is_closed = FALSE THEN case_id END) AS recent_open_case_count,
+    MAX(created_date) AS last_case_created_date
+  FROM cases_filtered
+  GROUP BY 1
+),
+case_topic_counts AS (
+  SELECT
+    requested_org,
+    COALESCE(category_c, 'Uncategorized') AS top_case_category,
+    COALESCE(issue_c, 'Unspecified') AS top_case_issue,
+    COUNT(*) AS case_count
+  FROM cases_filtered
+  GROUP BY 1,2,3
+),
+case_topic_ranked AS (
+  SELECT
+    requested_org,
+    top_case_category,
+    top_case_issue,
+    ROW_NUMBER() OVER (
+      PARTITION BY requested_org
+      ORDER BY case_count DESC, top_case_category, top_case_issue
+    ) AS rn
+  FROM case_topic_counts
+),
+last_signal_session_proxy AS (
+  SELECT
+    CASE
+      WHEN org_name = 'Sydney Grammar School' THEN 'Sydney Grammar School'
+      WHEN org_name = 'Subiaco Football Club' THEN 'Subiaco'
+      WHEN org_name = 'Burleigh Bears' THEN 'Burleigh Bears'
+      WHEN org_name = 'Knox Grammar School' THEN 'Knox Grammar'
+      WHEN org_name = 'Norths Devils Rugby League Football Club' THEN 'Norths Devils'
+      WHEN org_name IN ('Western Clydesdales', 'Western Clydesdales RLFC', 'Western Clydesdales Rugby League Football Club') THEN 'Western Clydesdales'
+      WHEN org_name IN ('Australian Lacrosse', 'Australian Lacrosse Association') THEN 'Lacrosse Australia'
+      WHEN org_name = 'Sunshine Coast Falcons' THEN 'Sunshine Coast Falcons'
+      WHEN org_name = 'Brisbane Grammar School' THEN 'Brisbane Grammar School'
+      WHEN org_name = 'Canterbury College' THEN 'Canterbury College'
+      WHEN org_name = 'Ascham School' THEN 'Ascham School'
+    END AS requested_org,
+    MAX(period_end_date) AS last_signal_session_proxy_date
+  FROM prod.de_prod_main.con_hudl_signal_org_activity_agg
+  WHERE period_model = 'Calendar'
+    AND period_type = 'Calendar Week'
+    AND action_name ILIKE 'Create Signal Session%'
+    AND org_name IN (
+      'Sydney Grammar School',
+      'Subiaco Football Club',
+      'Burleigh Bears',
+      'Knox Grammar School',
+      'Norths Devils Rugby League Football Club',
+      'Western Clydesdales',
+      'Western Clydesdales RLFC',
+      'Western Clydesdales Rugby League Football Club',
+      'Australian Lacrosse',
+      'Australian Lacrosse Association',
+      'Sunshine Coast Falcons',
+      'Brisbane Grammar School',
+      'Canterbury College',
+      'Ascham School'
+    )
+  GROUP BY 1
+)
+SELECT
+  sa.requested_org,
+  sa.sf_org_name,
+  sa.sf_business_unit,
+  sa.sf_market_type,
+  sa.sf_org_classification,
+  sa.account_executive_name,
+  sa.customer_success_manager_name,
+  sa.sales_owner_area,
+  p.active_product_families,
+  oa.open_opp_count,
+  oa.next_open_opp_close_date,
+  os.open_opp_stages,
+  ca.recent_case_count,
+  ca.recent_open_case_count,
+  ca.last_case_created_date,
+  ctr.top_case_category,
+  ctr.top_case_issue,
+  lsp.last_signal_session_proxy_date
+FROM filtered_accounts sa
+LEFT JOIN products_agg p
+  ON sa.requested_org = p.requested_org
+LEFT JOIN open_opps_agg oa
+  ON sa.requested_org = oa.requested_org
+LEFT JOIN open_opp_stages os
+  ON sa.requested_org = os.requested_org
+LEFT JOIN case_agg ca
+  ON sa.requested_org = ca.requested_org
+LEFT JOIN case_topic_ranked ctr
+  ON sa.requested_org = ctr.requested_org
+ AND ctr.rn = 1
+LEFT JOIN last_signal_session_proxy lsp
+  ON sa.requested_org = lsp.requested_org
+ORDER BY sa.requested_org
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_sydney_grammar_school_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Sydney Grammar School"].copy()
+sales_org = sales[sales["requested_org"] == "Sydney Grammar School"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Sydney Grammar School",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Sydney Grammar School"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Sydney Grammar School",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_sydney_grammar_school_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_subiaco_football_club_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Subiaco"].copy()
+sales_org = sales[sales["requested_org"] == "Subiaco"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Subiaco Football Club",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Subiaco"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Subiaco Football Club",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_subiaco_football_club_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_burleigh_bears_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Burleigh Bears"].copy()
+sales_org = sales[sales["requested_org"] == "Burleigh Bears"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Burleigh Bears",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Burleigh Bears"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Burleigh Bears",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_burleigh_bears_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_knox_grammar_school_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Knox Grammar"].copy()
+sales_org = sales[sales["requested_org"] == "Knox Grammar"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Knox Grammar School",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Knox Grammar"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Knox Grammar School",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_knox_grammar_school_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_norths_devils_rlfc_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Norths Devils"].copy()
+sales_org = sales[sales["requested_org"] == "Norths Devils"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Norths Devils Rugby League Football Club",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Norths Devils"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Norths Devils Rugby League Football Club",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_norths_devils_rlfc_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_western_clydesdales_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Western Clydesdales"].copy()
+sales_org = sales[sales["requested_org"] == "Western Clydesdales"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Western Clydesdales",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Western Clydesdales"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Western Clydesdales",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_western_clydesdales_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_australian_lacrosse_association_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Lacrosse Australia"].copy()
+sales_org = sales[sales["requested_org"] == "Lacrosse Australia"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Australian Lacrosse Association",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Lacrosse Australia"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Australian Lacrosse Association",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_australian_lacrosse_association_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_sunshine_coast_falcons_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Sunshine Coast Falcons"].copy()
+sales_org = sales[sales["requested_org"] == "Sunshine Coast Falcons"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Sunshine Coast Falcons",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Sunshine Coast Falcons"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Sunshine Coast Falcons",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_sunshine_coast_falcons_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_brisbane_grammar_school_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Brisbane Grammar School"].copy()
+sales_org = sales[sales["requested_org"] == "Brisbane Grammar School"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Brisbane Grammar School",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Brisbane Grammar School"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Brisbane Grammar School",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_brisbane_grammar_school_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_canterbury_college_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Canterbury College"].copy()
+sales_org = sales[sales["requested_org"] == "Canterbury College"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Canterbury College",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Canterbury College"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Canterbury College",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_canterbury_college_summary")
+  </query>
+<query inputs="comparison_report,summary_kpis,sales_org_context" name="org_ascham_school_summary" type="python">
+from dot import load_df, save_df
+import pandas as pd
+
+report = load_df("comparison_report").copy().reset_index(drop=True)
+labels = load_df("summary_kpis")
+sales = load_df("sales_org_context").copy()
+
+prior_label = labels.iloc[0]["prior_month_label"]
+last_label = labels.iloc[0]["last_month_label"]
+org_count = len(report)
+org = report[report["requested_org"] == "Ascham School"].copy()
+sales_org = sales[sales["requested_org"] == "Ascham School"].copy() if "requested_org" in sales.columns else pd.DataFrame()
+
+def clean_text(val, fallback=""):
+    if pd.isna(val) or str(val).strip() == "":
+        return fallback
+    return str(val).strip()
+
+def to_int(val):
+    if pd.isna(val):
+        return 0
+    try:
+        return int(val)
+    except Exception:
+        try:
+            return int(float(val))
+        except Exception:
+            return 0
+
+if org.empty:
+    out = pd.DataFrame([{
+        "requested_org": "Ascham School",
+        "headline": "No recorded usage in the selected months.",
+        "context_line": "",
+        "last_month_actions": 0,
+        "prior_month_actions": 0,
+        "actions_change": 0,
+        "last_month_active_users": 0,
+        "prior_month_active_users": 0,
+        "active_users_change": 0,
+        "last_month_active_teams": 0,
+        "prior_month_active_teams": 0,
+        "active_teams_change": 0,
+        "rank_position": None,
+        "sales_readout": "No usage landed in the selected months, so there is nothing new for sales to work from here.",
+        "suggested_action": "Treat this as a monitoring tab for now and check whether the account should still be in scope.",
+    }])
+else:
+    r = org.iloc[0]
+    rank_position = int(report.index[report["requested_org"] == "Ascham School"][0]) + 1
+    last_month_actions = int(r["last_month_actions"])
+    prior_month_actions = int(r["prior_month_actions"])
+    last_month_active_users = int(r["last_month_active_users"])
+    prior_month_active_users = int(r["prior_month_active_users"])
+    last_month_active_teams = int(r["last_month_active_teams"])
+    prior_month_active_teams = int(r["prior_month_active_teams"])
+    actions_change = int(r["actions_change"])
+    active_users_change = int(r["active_users_change"])
+    active_teams_change = int(r["active_teams_change"])
+
+    if prior_month_actions == 0 and last_month_actions &gt; 0:
+        headline = f"First recorded usage in {last_label}."
+    elif actions_change &gt; 0:
+        headline = f"Usage rose vs {prior_label}."
+    elif actions_change &lt; 0:
+        headline = f"Usage eased vs {prior_label}."
+    else:
+        headline = f"Usage was flat vs {prior_label}."
+
+    context_line = (
+        f"{last_month_actions:,} actions, {last_month_active_users:,} active users, and "
+        f"{last_month_active_teams:,} active teams in {last_label}. Ranked No. {rank_position} of {org_count} by action volume."
+    )
+
+    if sales_org.empty:
+        sales_readout = "No clean Salesforce match found for this organisation. Validate the account mapping before using this tab for outreach or pipeline work."
+        suggested_action = "Confirm the Salesforce account record and owner first."
+    else:
+        s = sales_org.iloc[0]
+        ae = clean_text(s.get("account_executive_name"), "Unassigned")
+        csm = clean_text(s.get("customer_success_manager_name"), "Unassigned")
+        bu = clean_text(s.get("sf_business_unit"), "Unknown BU")
+        market = clean_text(s.get("sf_market_type"), "Unknown market")
+        products = clean_text(s.get("active_product_families"), "No active subscription data found")
+        owner_area = clean_text(s.get("sales_owner_area"), "No territory listed")
+        open_opp_count = to_int(s.get("open_opp_count"))
+        recent_case_count = to_int(s.get("recent_case_count"))
+        recent_open_case_count = to_int(s.get("recent_open_case_count"))
+        open_opp_stages = clean_text(s.get("open_opp_stages"), "")
+        top_case_category = clean_text(s.get("top_case_category"), "")
+        top_case_issue = clean_text(s.get("top_case_issue"), "")
+
+        next_close_raw = s.get("next_open_opp_close_date")
+        next_close = pd.to_datetime(next_close_raw) if not pd.isna(next_close_raw) else pd.NaT
+        next_close_text = next_close.strftime("%d %b %Y").lstrip("0") if pd.notna(next_close) else ""
+        last_session_raw = s.get("last_signal_session_proxy_date")
+        last_session = pd.to_datetime(last_session_raw) if not pd.isna(last_session_raw) else pd.NaT
+        last_session_text = last_session.strftime("%d %b %Y").lstrip("0") if pd.notna(last_session) else ""
+
+        sales_readout = f"Segment: {bu} / {market}. AE: {ae}. CSM: {csm}. Territory: {owner_area}. Active products: {products}."
+        if last_session_text:
+            sales_readout += f" Last Signal session date: {last_session_text} (proxy from Create Signal Session)."
+        else:
+            sales_readout += " No Signal session creation activity found in the available event data."
+
+        if open_opp_count &gt; 0:
+            opp_line = f" {open_opp_count} open opportunities"
+            if next_close_text:
+                opp_line += f", next close date {next_close_text}"
+            if open_opp_stages:
+                opp_line += f", current stages {open_opp_stages}"
+            opp_line += "."
+        else:
+            opp_line = " No open opportunities in Salesforce."
+
+        if recent_case_count &gt; 0:
+            case_line = f" {recent_case_count} support cases in the last 120 days"
+            if recent_open_case_count &gt; 0:
+                case_line += f", with {recent_open_case_count} still open"
+            if top_case_category:
+                case_line += f". Main theme: {top_case_category}"
+                if top_case_issue and top_case_issue != "Unspecified":
+                    case_line += f" / {top_case_issue}"
+            case_line += "."
+        else:
+            case_line = " No support cases in the last 120 days."
+
+        sales_readout = sales_readout + opp_line + case_line
+
+        if ae == "Unassigned" and csm == "Unassigned":
+            suggested_action = "Confirm account ownership in Salesforce before outbound."
+        elif recent_open_case_count &gt; 0:
+            suggested_action = "Review the open support case history first so any outreach lands in context."
+        elif open_opp_count &gt; 0 and actions_change &gt; 0:
+            suggested_action = "Use the current usage lift in the live opportunity story."
+        elif open_opp_count &gt; 0 and actions_change &lt;= 0:
+            suggested_action = "There is live pipeline, but usage is not growing. Check champion health and rollout status before pushing the deal."
+        elif prior_month_actions == 0 and last_month_actions &gt; 0:
+            suggested_action = "New usage showed up last month. Identify the active coach or analyst and widen the rollout."
+        elif actions_change &gt; 0:
+            suggested_action = "Usage is strengthening. Good time for a value or expansion check-in."
+        elif actions_change &lt; 0:
+            suggested_action = "Usage slipped. Reach out to confirm owner, workflow fit, and whether support or training is needed."
+        else:
+            suggested_action = "No urgent signal. Keep the relationship warm and watch next month."
+
+    out = pd.DataFrame([{
+        "requested_org": "Ascham School",
+        "headline": headline,
+        "context_line": context_line,
+        "last_month_actions": last_month_actions,
+        "prior_month_actions": prior_month_actions,
+        "actions_change": actions_change,
+        "last_month_active_users": last_month_active_users,
+        "prior_month_active_users": prior_month_active_users,
+        "active_users_change": active_users_change,
+        "last_month_active_teams": last_month_active_teams,
+        "prior_month_active_teams": prior_month_active_teams,
+        "active_teams_change": active_teams_change,
+        "rank_position": rank_position,
+        "sales_readout": sales_readout,
+        "suggested_action": suggested_action,
+    }])
+
+save_df(out, "org_ascham_school_summary")
+  </query>
+<!-- org insight queries end -->
+</head>
+<body class="space-y-6 bg-gradient-to-b from-stone-50 via-white to-amber-50/30 p-6 text-stone-900">
+<style>
+  .dot-app [data-card-title="Organisation detail"] table {
+    font-size: 0.94rem;
+  }
+  .dot-app [data-card-title="Organisation detail"] thead th {
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    color: #78716c;
+    background: linear-gradient(180deg, rgba(251,191,36,0.14), rgba(245,245,244,0.96));
+    border-bottom: 1px solid rgba(214,211,209,0.9);
+  }
+  .dot-app [data-card-title="Organisation detail"] tbody tr:nth-child(odd) {
+    background: rgba(250,250,249,0.75);
+  }
+  .dot-app [data-card-title="Organisation detail"] tbody tr:hover {
+    background: rgba(255,247,237,0.95);
+  }
+  .dot-app [data-card-title="Organisation detail"] tbody td:first-child {
+    font-weight: 600;
+    color: #1c1917;
+  }
+</style>
+<header class="space-y-2">
+<h1 class="text-3xl font-semibold">APAC Hudl Signal Monthly Usage (May)</h1>
+<p class="text-sm text-muted-foreground">Breakdown of Hudl Signal usage for Oceania organisations for May with a comparison to previous months.</p>
+</header>
+<kpis source="summary_kpis">
+<kpi col="last_month_total_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Last full month actions"></kpi>
+<kpi col="actions_change_pct" fmt="percent" title="Action change %"></kpi>
+<kpi col="orgs_up" fmt="integer" title="Orgs up month over month"></kpi>
+<kpi col="last_month_total_active_users" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_total_active_teams" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="actions_by_org" request="Grouped horizontal bar chart with requested_org on Y, total_action_count on X, grouped by month_label, sorted by the latest month descending." source="actions_monthly" title="Actions by organisation"></chart>
+<chart id="action_change" request="Horizontal bar chart with requested_org on Y and actions_change on X. Colour increases and declines differently. Sort descending by actions_change." source="comparison_report" title="Month-over-month change in actions"></chart>
+</grid>
+<grid cols="2">
+<chart id="workflow_totals_overview" request="Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_totals" title="Workflow totals across the 11 clubs"></chart>
+<chart id="workflow_last_month_by_org_chart" request="Grouped horizontal bar chart with requested_org on Y and metric_value on X, grouped by metric_name. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created. Sort by Uploaded sessions descending." source="workflow_last_month_by_org" title="Latest month workflow by club"></chart>
+</grid>
+<grid cols="2">
+<chart id="active_users_by_org" request="Grouped bar chart with requested_org on X, active_users on Y, grouped by month_label." source="active_users_monthly" title="Active users by organisation"></chart>
+<chart id="last3mo_trend" request="Grouped bar chart with requested_org on X, total_action_count on Y, grouped by month_label. Use organisation names on the X axis." source="trend_last3mo" title="Last 3 complete months"></chart>
+</grid>
+<!-- org spotlight sections start -->
+<section class="space-y-3">
+<h2 class="text-2xl font-semibold">Club insights by organisation</h2>
+<p class="text-sm text-muted-foreground">
+    Each org tab pairs the usage trend with a plain-language club insight and a simple next step based on the workflow data shown.
+  </p>
+</section>
+<tabs default-tab="sydney_grammar_school" lazy="">
+<tab id="sydney_grammar_school" label="Sydney Grammar School">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Sydney Grammar School</h3>
+<p class="text-sm text-muted-foreground">{{org_sydney_grammar_school_summary.headline}} {{org_sydney_grammar_school_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_sydney_grammar_school_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_sydney_grammar_school_club_insight.next_step}}
+      </alert>
+<kpis source="org_sydney_grammar_school_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="sydney_grammar_school_trend" request="Filter to requested_org = 'Sydney Grammar School'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="sydney_grammar_school_workflow" request="Filter to requested_org = 'Sydney Grammar School'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="sydney_grammar_school_action_breakdown" request="Filter to requested_org = 'Sydney Grammar School'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="subiaco_football_club" label="Subiaco Football Club">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Subiaco Football Club</h3>
+<p class="text-sm text-muted-foreground">{{org_subiaco_football_club_summary.headline}} {{org_subiaco_football_club_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_subiaco_football_club_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_subiaco_football_club_club_insight.next_step}}
+      </alert>
+<kpis source="org_subiaco_football_club_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="subiaco_football_club_trend" request="Filter to requested_org = 'Subiaco'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="subiaco_football_club_workflow" request="Filter to requested_org = 'Subiaco'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="subiaco_football_club_action_breakdown" request="Filter to requested_org = 'Subiaco'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="burleigh_bears" label="Burleigh Bears">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Burleigh Bears</h3>
+<p class="text-sm text-muted-foreground">{{org_burleigh_bears_summary.headline}} {{org_burleigh_bears_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_burleigh_bears_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_burleigh_bears_club_insight.next_step}}
+      </alert>
+<kpis source="org_burleigh_bears_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="burleigh_bears_trend" request="Filter to requested_org = 'Burleigh Bears'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="burleigh_bears_workflow" request="Filter to requested_org = 'Burleigh Bears'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="burleigh_bears_action_breakdown" request="Filter to requested_org = 'Burleigh Bears'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="knox_grammar_school" label="Knox Grammar School">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Knox Grammar School</h3>
+<p class="text-sm text-muted-foreground">{{org_knox_grammar_school_summary.headline}} {{org_knox_grammar_school_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_knox_grammar_school_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_knox_grammar_school_club_insight.next_step}}
+      </alert>
+<kpis source="org_knox_grammar_school_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="knox_grammar_school_trend" request="Filter to requested_org = 'Knox Grammar'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="knox_grammar_school_workflow" request="Filter to requested_org = 'Knox Grammar'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="knox_grammar_school_action_breakdown" request="Filter to requested_org = 'Knox Grammar'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="norths_devils_rlfc" label="Norths Devils Rugby League Football Club">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Norths Devils Rugby League Football Club</h3>
+<p class="text-sm text-muted-foreground">{{org_norths_devils_rlfc_summary.headline}} {{org_norths_devils_rlfc_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_norths_devils_rlfc_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_norths_devils_rlfc_club_insight.next_step}}
+      </alert>
+<kpis source="org_norths_devils_rlfc_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="norths_devils_rlfc_trend" request="Filter to requested_org = 'Norths Devils'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="norths_devils_rlfc_workflow" request="Filter to requested_org = 'Norths Devils'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="norths_devils_rlfc_action_breakdown" request="Filter to requested_org = 'Norths Devils'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="western_clydesdales" label="Western Clydesdales">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Western Clydesdales</h3>
+<p class="text-sm text-muted-foreground">{{org_western_clydesdales_summary.headline}} {{org_western_clydesdales_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_western_clydesdales_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_western_clydesdales_club_insight.next_step}}
+      </alert>
+<kpis source="org_western_clydesdales_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="western_clydesdales_trend" request="Filter to requested_org = 'Western Clydesdales'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="western_clydesdales_workflow" request="Filter to requested_org = 'Western Clydesdales'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="western_clydesdales_action_breakdown" request="Filter to requested_org = 'Western Clydesdales'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="australian_lacrosse_association" label="Australian Lacrosse Association">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Australian Lacrosse Association</h3>
+<p class="text-sm text-muted-foreground">{{org_australian_lacrosse_association_summary.headline}} {{org_australian_lacrosse_association_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_australian_lacrosse_association_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_australian_lacrosse_association_club_insight.next_step}}
+      </alert>
+<kpis source="org_australian_lacrosse_association_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="australian_lacrosse_association_trend" request="Filter to requested_org = 'Lacrosse Australia'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="australian_lacrosse_association_workflow" request="Filter to requested_org = 'Lacrosse Australia'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="australian_lacrosse_association_action_breakdown" request="Filter to requested_org = 'Lacrosse Australia'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="sunshine_coast_falcons" label="Sunshine Coast Falcons">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Sunshine Coast Falcons</h3>
+<p class="text-sm text-muted-foreground">{{org_sunshine_coast_falcons_summary.headline}} {{org_sunshine_coast_falcons_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_sunshine_coast_falcons_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_sunshine_coast_falcons_club_insight.next_step}}
+      </alert>
+<kpis source="org_sunshine_coast_falcons_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="sunshine_coast_falcons_trend" request="Filter to requested_org = 'Sunshine Coast Falcons'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="sunshine_coast_falcons_workflow" request="Filter to requested_org = 'Sunshine Coast Falcons'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="sunshine_coast_falcons_action_breakdown" request="Filter to requested_org = 'Sunshine Coast Falcons'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="brisbane_grammar_school" label="Brisbane Grammar School">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Brisbane Grammar School</h3>
+<p class="text-sm text-muted-foreground">{{org_brisbane_grammar_school_summary.headline}} {{org_brisbane_grammar_school_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_brisbane_grammar_school_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_brisbane_grammar_school_club_insight.next_step}}
+      </alert>
+<kpis source="org_brisbane_grammar_school_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="brisbane_grammar_school_trend" request="Filter to requested_org = 'Brisbane Grammar School'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="brisbane_grammar_school_workflow" request="Filter to requested_org = 'Brisbane Grammar School'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="brisbane_grammar_school_action_breakdown" request="Filter to requested_org = 'Brisbane Grammar School'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="canterbury_college" label="Canterbury College">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Canterbury College</h3>
+<p class="text-sm text-muted-foreground">{{org_canterbury_college_summary.headline}} {{org_canterbury_college_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_canterbury_college_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_canterbury_college_club_insight.next_step}}
+      </alert>
+<kpis source="org_canterbury_college_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="canterbury_college_trend" request="Filter to requested_org = 'Canterbury College'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="canterbury_college_workflow" request="Filter to requested_org = 'Canterbury College'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="canterbury_college_action_breakdown" request="Filter to requested_org = 'Canterbury College'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+<tab id="ascham_school" label="Ascham School">
+<section class="space-y-4">
+<div class="space-y-1">
+<h3 class="text-xl font-semibold">Ascham School</h3>
+<p class="text-sm text-muted-foreground">{{org_ascham_school_summary.headline}} {{org_ascham_school_summary.context_line}}</p>
+</div>
+<alert title="Club insight" type="info">
+        {{org_ascham_school_club_insight.club_insight}}
+      </alert>
+<alert title="Next step" type="success">
+        {{org_ascham_school_club_insight.next_step}}
+      </alert>
+<kpis source="org_ascham_school_summary">
+<kpi col="last_month_actions" delta-col="actions_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Actions"></kpi>
+<kpi col="last_month_active_users" delta-col="active_users_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active users"></kpi>
+<kpi col="last_month_active_teams" delta-col="active_teams_change" delta-fmt="integer" delta-label="vs prior month" fmt="integer" title="Active teams"></kpi>
+</kpis>
+<grid cols="2">
+<chart id="ascham_school_trend" request="Filter to requested_org = 'Ascham School'. Show total_action_count by month_label as a line chart ordered chronologically." source="trend_last3mo" title="3-month action trend"></chart>
+<chart id="ascham_school_workflow" request="Filter to requested_org = 'Ascham School'. Grouped bar chart with metric_name on X and metric_value on Y, grouped by month_label. Keep the metric order Uploaded sessions, Curated sessions, Dashboards created." source="workflow_metrics_monthly" title="Uploaded sessions, curation and dashboards"></chart>
+    </grid>
+      <chart id="ascham_school_action_breakdown" request="Filter to requested_org = 'Ascham School'. Grouped horizontal bar chart with action_name on Y and action_count on X, grouped by month_label. Sort descending by the latest month action_count. Show all tracked actions." source="action_breakdown_monthly" title="Event counts by action"></chart>
+</section>
+</tab>
+</tabs>
+<!-- org spotlight sections end -->
+<section class="space-y-3 pt-4">
+  <data-table source="comparison_report_pretty" title="Organisation detail" striped show-bars="true" class="rounded-3xl border border-stone-200/80 bg-white/95 shadow-xl shadow-stone-200/40"></data-table>
+</section>
+</body>
+</html>
